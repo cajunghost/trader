@@ -18,6 +18,9 @@ class MarketDataClient(Protocol):
     def recent_closes(self, symbol: str, range_: str = "6mo") -> list[float]:
         ...
 
+    def quote(self, symbol: str) -> QuoteSnapshot:
+        ...
+
 
 @dataclass(frozen=True)
 class ScanResult:

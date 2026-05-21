@@ -112,6 +112,33 @@ class YahooFinanceClient:
             contracts.extend(self._contracts(symbol, "put", int(chain["expirationDate"]), chain.get("puts") or []))
         return quote, contracts
 
+    def quote(self, symbol: str) -> QuoteSnapshot:
+        data = self._get_json(
+            f"/v8/finance/chart/{urllib.parse.quote(symbol)}",
+            {"range": "1d", "interval": "1m"},
+        )
+        result = (data.get("chart", {}).get("result") or [None])[0]
+        if not result:
+            raise MarketDataError(f"No quote chart returned for {symbol}")
+        meta = result.get("meta") or {}
+        timestamps = result.get("timestamp") or []
+        price = (
+            meta.get("regularMarketPrice")
+            or meta.get("postMarketPrice")
+            or meta.get("preMarketPrice")
+            or meta.get("chartPreviousClose")
+            or meta.get("previousClose")
+        )
+        if price is None:
+            raise MarketDataError(f"No quote price returned for {symbol}")
+        return QuoteSnapshot(
+            symbol=symbol.upper(),
+            price=float(price),
+            previous_close=_optional_float(meta.get("chartPreviousClose") or meta.get("previousClose")),
+            regular_market_time=_optional_int(meta.get("regularMarketTime") or (timestamps[-1] if timestamps else None)),
+            currency=meta.get("currency"),
+        )
+
     def recent_closes(self, symbol: str, range_: str = "6mo") -> list[float]:
         data = self._get_json(f"/v8/finance/chart/{urllib.parse.quote(symbol)}", {"range": range_, "interval": "1d"})
         result = (data.get("chart", {}).get("result") or [None])[0]
@@ -260,6 +287,9 @@ class TradierClient:
         if not closes:
             raise MarketDataError(f"No Tradier historical closes returned for {symbol}")
         return closes
+
+    def quote(self, symbol: str) -> QuoteSnapshot:
+        return self._quote(symbol)
 
     def _quote(self, symbol: str) -> QuoteSnapshot:
         data = self._get_json("/markets/quotes", {"symbols": symbol.upper()})

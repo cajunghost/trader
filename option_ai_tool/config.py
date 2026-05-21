@@ -23,6 +23,11 @@ class ScannerConfig:
     market_data_provider: str = os.getenv("MARKET_DATA_PROVIDER", "yahoo")
     tradier_token: str | None = os.getenv("TRADIER_TOKEN")
     tradier_base_url: str = os.getenv("TRADIER_BASE_URL", "https://api.tradier.com/v1")
+    trader_db_path: str = os.getenv("TRADER_DB_PATH", "trader.sqlite3")
+    suggestion_universe: str = os.getenv(
+        "SUGGESTION_UNIVERSE",
+        "AAPL,MSFT,NVDA,AMZN,META,GOOGL,TSLA,AMD,AVGO,SPY,QQQ,IWM,NFLX,PLTR,COIN,SMCI,CRM,UBER,JPM,XOM",
+    )
     risk_free_rate: float = _float("RISK_FREE_RATE", 0.045)
     min_open_interest: int = _int("MIN_OPEN_INTEREST", 100)
     min_volume: int = _int("MIN_VOLUME", 10)

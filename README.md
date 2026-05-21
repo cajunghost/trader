@@ -21,7 +21,7 @@ Use the bundled Codex Python runtime or Python 3.11+.
 python -m option_ai_tool.cli --symbols AAPL MSFT NVDA --max-results 10
 ```
 
-Start the local web API:
+Start the mobile web app:
 
 ```powershell
 python -m option_ai_tool.server --host 127.0.0.1 --port 8080
@@ -33,6 +33,24 @@ Then open:
 http://127.0.0.1:8080/?symbols=AAPL,MSFT,NVDA
 ```
 
+## Mobile Web App
+
+The web interface includes:
+
+- Ticker scans with editable contract counts.
+- Real-data suggested tickers ranked by quote movement, 5-day momentum, and realized volatility.
+- Saved recommendations in SQLite.
+- Performance marks that refresh the latest option-chain bid/ask/mid.
+- Target, stop, estimated cost, and potential return calculations per contract count.
+
+For phone access anywhere, deploy the repo as a Python web service. The included `render.yaml`, `Procfile`, and `Dockerfile` run:
+
+```text
+python -m option_ai_tool.server --host 0.0.0.0 --port $PORT
+```
+
+Set `TRADER_DB_PATH` to a persistent disk path such as `/var/data/trader.sqlite3`.
+
 ## Configuration
 
 Copy `.env.example` to `.env` if you want to change defaults. The app works without API keys because the Yahoo Finance endpoints are public, but they may be delayed, rate-limited, or unavailable.
@@ -42,6 +60,8 @@ Copy `.env.example` to `.env` if you want to change defaults. The app works with
 | `MARKET_DATA_PROVIDER` | `yahoo` | Use `yahoo` or `tradier`. |
 | `TRADIER_TOKEN` | empty | Bearer token for Tradier market data. |
 | `TRADIER_BASE_URL` | `https://api.tradier.com/v1` | Tradier live API base URL. |
+| `TRADER_DB_PATH` | `trader.sqlite3` | SQLite path for saved scans and performance marks. |
+| `SUGGESTION_UNIVERSE` | large-cap watchlist | Comma-separated tickers used for research suggestions. |
 | `RISK_FREE_RATE` | `0.045` | Annualized risk-free rate used in Greeks. |
 | `MIN_OPEN_INTEREST` | `100` | Minimum contract open interest. |
 | `MIN_VOLUME` | `10` | Minimum contract volume. |

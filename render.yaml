@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: trader
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: "python -m option_ai_tool.server --host 0.0.0.0 --port $PORT"
+    disk:
+      name: trader-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: TRADER_DB_PATH
+        value: /var/data/trader.sqlite3
+      - key: MARKET_DATA_PROVIDER
+        value: yahoo
+      - key: RISK_FREE_RATE
+        value: "0.045"
+
