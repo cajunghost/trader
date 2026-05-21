@@ -26,11 +26,12 @@ INDEX = """<!doctype html>
       --muted: #657080;
       --line: #dfe5ec;
       --panel: #ffffff;
-      --bg: #f5f7fa;
+      --bg: #f7f8fa;
       --accent: #0f766e;
       --accent-dark: #115e59;
       --warn: #9f1239;
       --good: #166534;
+      --soft: #eef6f4;
     }
     * { box-sizing: border-box; }
     body {
@@ -40,13 +41,14 @@ INDEX = """<!doctype html>
       color: var(--ink);
     }
     header {
-      background: #111827;
-      color: white;
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--ink);
       padding: 18px 16px 14px;
       position: sticky;
       top: 0;
       z-index: 3;
-      border-bottom: 1px solid #243044;
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
     }
     .topbar {
       align-items: center;
@@ -64,7 +66,8 @@ INDEX = """<!doctype html>
       gap: 14px;
       margin: 0 auto;
       max-width: 1180px;
-      padding: 14px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      padding: 16px;
     }
     section {
       background: var(--panel);
@@ -75,7 +78,7 @@ INDEX = """<!doctype html>
     form {
       display: grid;
       gap: 10px;
-      grid-template-columns: 1fr 120px auto;
+      grid-template-columns: minmax(220px, 1fr) 120px 140px auto;
     }
     label {
       color: var(--muted);
@@ -105,6 +108,8 @@ INDEX = """<!doctype html>
       padding: 9px 12px;
     }
     button.secondary { background: #344054; }
+    button:hover { background: var(--accent-dark); }
+    button.secondary:hover { background: #1f2937; }
     button.ghost {
       background: transparent;
       border: 1px solid var(--line);
@@ -124,7 +129,7 @@ INDEX = """<!doctype html>
     }
     .chip {
       align-items: center;
-      background: #eef6f4;
+      background: var(--soft);
       border: 1px solid #b9d8d2;
       border-radius: 999px;
       color: #164e48;
@@ -147,7 +152,8 @@ INDEX = """<!doctype html>
     .rec {
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px;
+      background: #fff;
+      padding: 14px;
     }
     .headline {
       align-items: start;
@@ -161,6 +167,17 @@ INDEX = """<!doctype html>
       color: var(--good);
       font-weight: 800;
       padding: 6px 8px;
+    }
+    .price-pill {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--ink);
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 6px;
+      padding: 5px 7px;
     }
     .meta {
       color: var(--muted);
@@ -215,7 +232,9 @@ INDEX = """<!doctype html>
     .toast.show { transform: translateY(0); }
     @media (max-width: 860px) {
       .layout { grid-template-columns: 1fr; }
-      form { grid-template-columns: 1fr; }
+      form { grid-template-columns: 1fr 1fr; }
+      form > div:first-child { grid-column: 1 / -1; }
+      form > div:last-child { grid-column: 1 / -1; }
       header { position: static; }
       .table-wrap { overflow-x: auto; }
       table { min-width: 760px; }
@@ -239,6 +258,10 @@ INDEX = """<!doctype html>
         <div>
           <label for="contracts">Contracts</label>
           <input id="contracts" type="number" min="1" step="1" value="1">
+        </div>
+        <div>
+          <label for="max-price">Max Ask</label>
+          <input id="max-price" type="number" min="0" step="0.01" placeholder="Any">
         </div>
         <div>
           <label>&nbsp;</label>
@@ -299,6 +322,7 @@ INDEX = """<!doctype html>
   <script>
     const symbolsEl = document.getElementById('symbols');
     const contractsEl = document.getElementById('contracts');
+    const maxPriceEl = document.getElementById('max-price');
     const resultsEl = document.getElementById('results');
     const portfolioEl = document.getElementById('portfolio');
     const suggestionsEl = document.getElementById('suggestions');
@@ -346,6 +370,7 @@ INDEX = """<!doctype html>
             <div>
               <h3>${escapeHtml(rec.symbol)} ${escapeHtml(rec.strategy)}</h3>
               <div class="meta">${escapeHtml(rec.contract)}</div>
+              <span class="price-pill">Ask ${money(rec.ask)}</span>
             </div>
             <span class="score">${escapeHtml(rec.score)}</span>
           </div>
@@ -375,6 +400,7 @@ INDEX = """<!doctype html>
         const qs = new URLSearchParams({
           symbols: symbolsEl.value,
           contracts: contractsEl.value || '1',
+          max_price: maxPriceEl.value || '',
           save: '1'
         });
         const payload = await api('/api/scan?' + qs.toString());
@@ -391,7 +417,7 @@ INDEX = """<!doctype html>
           item.recommendations.forEach(rec => html.push(renderRecommendation(rec)));
         }
         resultsEl.innerHTML = html.join('');
-        scanStatusEl.textContent = `${payload.saved_count} saved`;
+        scanStatusEl.textContent = `${payload.saved_count} saved${payload.max_price ? ' under ' + money(payload.max_price) : ''}`;
         showToast('Scan saved');
         await loadPortfolio();
       } catch (error) {
@@ -430,6 +456,7 @@ INDEX = """<!doctype html>
         suggestionsEl.querySelectorAll('button').forEach(button => {
           button.addEventListener('click', () => {
             symbolsEl.value = button.dataset.symbol;
+            maxPriceEl.value = '';
             scan();
           });
         });
@@ -544,12 +571,13 @@ class Handler(BaseHTTPRequestHandler):
     def _scan(self, params: dict[str, list[str]]) -> dict[str, object]:
         symbols = params.get("symbols", ["AAPL,MSFT,NVDA"])[0]
         contracts = max(_int_param(params, "contracts", 1), 1)
+        max_price = _float_param(params, "max_price")
         save = params.get("save", ["1"])[0] != "0"
         results = scan_symbols(symbols.replace(",", " ").split(), config=_config(), client=_client(), max_results_per_symbol=8)
         payload = []
         saved_count = 0
         for result in results:
-            recommendations = result.recommendations
+            recommendations = _filter_and_sort_recommendations(result.recommendations, max_price)
             saved_rows = _database().save_recommendations(recommendations, contracts=contracts) if save else []
             saved_count += len(saved_rows)
             rendered = []
@@ -560,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                     item["database_id"] = saved_rows[index]["id"]
                 rendered.append(item)
             payload.append({"symbol": result.symbol, "recommendations": rendered, "errors": result.errors})
-        return {"results": payload, "saved_count": saved_count}
+        return {"results": payload, "saved_count": saved_count, "max_price": max_price}
 
     def _suggestions(self, params: dict[str, list[str]]) -> dict[str, object]:
         limit = _int_param(params, "limit", 10)
@@ -609,6 +637,25 @@ def _int_param(params: dict[str, list[str]], name: str, default: int) -> int:
         return int(params.get(name, [str(default)])[0])
     except ValueError:
         return default
+
+
+def _float_param(params: dict[str, list[str]], name: str) -> float | None:
+    raw = params.get(name, [""])[0].strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _filter_and_sort_recommendations(recommendations, max_price: float | None):
+    filtered = list(recommendations)
+    if max_price is not None:
+        filtered = [rec for rec in filtered if rec.ask <= max_price]
+        filtered.sort(key=lambda rec: (rec.ask, -rec.score))
+    return filtered
 
 
 def _potential_from_recommendation(recommendation: dict[str, object], contracts: int) -> dict[str, float]:

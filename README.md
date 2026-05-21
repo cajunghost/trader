@@ -39,6 +39,7 @@ http://127.0.0.1:8080/?symbols=AAPL,MSFT,NVDA
 The web interface includes:
 
 - Ticker scans with editable contract counts.
+- Max option ask filtering, which shows only contracts at or below your ceiling and sorts them cheapest first.
 - Real-data suggested tickers ranked by quote movement, 5-day momentum, and realized volatility.
 - Saved recommendations in SQLite.
 - Performance marks that refresh the latest option-chain bid/ask/mid.
@@ -93,8 +94,9 @@ For each symbol, the scanner:
 3. Rejects internally inconsistent contracts, including strikes far outside a sane moneyness band.
 4. Computes Greeks from real chain inputs.
 5. Estimates a conservative entry limit near the bid/ask midpoint and a lower "patient entry" based on spread and recent underlying volatility.
-6. Scores contracts by liquidity, spread quality, convexity, theta cost, moneyness, probability proxy, and upside trigger distance.
-7. Emits alert triggers for entry, profit taking, stop loss, time decay, liquidity deterioration, and Greek drift.
+6. Applies the optional max-ask filter and sorts matching contracts by cheapest ask first.
+7. Scores contracts by liquidity, spread quality, convexity, theta cost, moneyness, probability proxy, and upside trigger distance.
+8. Emits alert triggers for entry, profit taking, stop loss, time decay, liquidity deterioration, and Greek drift.
 
 ## Example Output
 
