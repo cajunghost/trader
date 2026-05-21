@@ -23,6 +23,7 @@ class ScannerConfig:
     market_data_provider: str = os.getenv("MARKET_DATA_PROVIDER", "yahoo")
     tradier_token: str | None = os.getenv("TRADIER_TOKEN")
     tradier_base_url: str = os.getenv("TRADIER_BASE_URL", "https://api.tradier.com/v1")
+    marketdata_token: str | None = os.getenv("MARKETDATA_TOKEN")
     trader_db_path: str = os.getenv("TRADER_DB_PATH", "trader.sqlite3")
     suggestion_universe: str = os.getenv(
         "SUGGESTION_UNIVERSE",

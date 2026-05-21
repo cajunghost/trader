@@ -9,6 +9,7 @@ This project does **not** execute trades and does **not** promise returns. It is
 - Real quote, options-chain, and price-history data from a configured provider.
 - Yahoo Finance public endpoints are available as a no-key fallback.
 - Tradier is supported for a production options feed when `TRADIER_TOKEN` is set.
+- MarketData.app is used as a resilient options-chain fallback. It supports AAPL without registration and supports broader usage when `MARKETDATA_TOKEN` is set.
 - Black-Scholes Greeks computed from each contract's live/delayed implied volatility, strike, expiration, and underlying price.
 - Liquidity, spread, delta, theta, gamma, implied-volatility, and reward/risk filters.
 - Rule-based "AI" ranking that is deterministic and auditable. No synthetic market data is generated.
@@ -60,6 +61,7 @@ Copy `.env.example` to `.env` if you want to change defaults. The app works with
 | `MARKET_DATA_PROVIDER` | `yahoo` | Use `yahoo` or `tradier`. |
 | `TRADIER_TOKEN` | empty | Bearer token for Tradier market data. |
 | `TRADIER_BASE_URL` | `https://api.tradier.com/v1` | Tradier live API base URL. |
+| `MARKETDATA_TOKEN` | empty | Optional MarketData.app token for broader options-chain fallback coverage. |
 | `TRADER_DB_PATH` | `trader.sqlite3` | SQLite path for saved scans and performance marks. |
 | `SUGGESTION_UNIVERSE` | large-cap watchlist | Comma-separated tickers used for research suggestions. |
 | `RISK_FREE_RATE` | `0.045` | Annualized risk-free rate used in Greeks. |
@@ -77,6 +79,10 @@ Tradier's official docs describe its options expirations endpoint and options ch
 - [Tradier options expirations](https://docs.tradier.com/reference/brokerage-api-markets-get-options-expirations)
 - [Tradier options chains](https://docs.tradier.com/reference/brokerage-api-markets-get-options-chains)
 - [Tradier market data overview](https://docs.tradier.com/docs/market-data)
+
+MarketData.app's option-chain documentation describes the fallback endpoint and notes AAPL can be tested without registration:
+
+- [MarketData.app option chain API](https://www.marketdata.app/api/options/option-chain-api/)
 
 ## How Recommendations Work
 

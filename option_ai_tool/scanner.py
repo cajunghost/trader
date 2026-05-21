@@ -4,7 +4,15 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .config import ScannerConfig
-from .market_data import MarketDataError, OptionContract, QuoteSnapshot, TradierClient, YahooFinanceClient
+from .market_data import (
+    MarketDataAppClient,
+    MarketDataError,
+    OptionContract,
+    QuoteSnapshot,
+    ResilientMarketDataClient,
+    TradierClient,
+    YahooFinanceClient,
+)
 from .scoring import Recommendation, rank_contracts
 
 
@@ -81,5 +89,8 @@ def _client_from_config(config: ScannerConfig) -> MarketDataClient:
     if provider == "tradier":
         return TradierClient(token=config.tradier_token or "", base_url=config.tradier_base_url)
     if provider == "yahoo":
-        return YahooFinanceClient()
+        return ResilientMarketDataClient(
+            primary=YahooFinanceClient(),
+            fallback=MarketDataAppClient(token=config.marketdata_token),
+        )
     raise MarketDataError(f"Unsupported MARKET_DATA_PROVIDER: {config.market_data_provider}")

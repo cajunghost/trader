@@ -50,7 +50,7 @@ class OptionContract:
 
 
 class YahooFinanceClient:
-    base = "https://query1.finance.yahoo.com"
+    bases = ("https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com")
 
     def __init__(self, timeout: int = 12) -> None:
         self.timeout = timeout
@@ -59,22 +59,28 @@ class YahooFinanceClient:
         self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self._cookies))
 
     def _get_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        errors = []
         try:
             params = dict(params or {})
             if path.startswith("/v7/finance/options"):
                 params.setdefault("crumb", self._get_crumb())
             query = f"?{urllib.parse.urlencode(params)}" if params else ""
-            request = urllib.request.Request(
-                f"{self.base}{path}{query}",
-                headers={
-                    "User-Agent": _USER_AGENT,
-                    "Accept": "application/json",
-                },
-            )
-            with self._opener.open(request, timeout=self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+            for base in self.bases:
+                request = urllib.request.Request(
+                    f"{base}{path}{query}",
+                    headers={
+                        "User-Agent": _USER_AGENT,
+                        "Accept": "application/json",
+                    },
+                )
+                try:
+                    with self._opener.open(request, timeout=self.timeout) as response:
+                        return json.loads(response.read().decode("utf-8"))
+                except Exception as exc:
+                    errors.append(f"{base}: {exc}")
         except Exception as exc:  # pragma: no cover - network failure details vary
             raise MarketDataError(f"Yahoo Finance request failed for {path}: {exc}") from exc
+        raise MarketDataError(f"Yahoo Finance request failed for {path}: {'; '.join(errors)}")
 
     def _get_crumb(self) -> str:
         if self._crumb:
@@ -337,6 +343,152 @@ class TradierClient:
 def _date_to_epoch(value: str) -> int:
     parsed = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
     return int(parsed.timestamp())
+
+
+class MarketDataAppClient:
+    base_url = "https://api.marketdata.app/v1"
+
+    def __init__(self, token: str | None = None, timeout: int = 20) -> None:
+        self.token = token
+        self.timeout = timeout
+
+    def supports_symbol(self, symbol: str) -> bool:
+        return bool(self.token) or symbol.upper() == "AAPL"
+
+    def option_expirations(self, symbol: str) -> list[int]:
+        if not self.supports_symbol(symbol):
+            raise MarketDataError("MarketData.app fallback without MARKETDATA_TOKEN supports AAPL only")
+        start = date.today() + timedelta(days=1)
+        end = date.today() + timedelta(days=95)
+        data = self._chain(symbol, {"from": start.isoformat(), "to": end.isoformat()})
+        expirations = sorted({int(exp) for exp in _array(data, "expiration")})
+        if not expirations:
+            raise MarketDataError(f"No MarketData.app option expirations returned for {symbol}")
+        return expirations
+
+    def option_chain(self, symbol: str, expiration: int | None = None) -> tuple[QuoteSnapshot, list[OptionContract]]:
+        if not self.supports_symbol(symbol):
+            raise MarketDataError("MarketData.app fallback without MARKETDATA_TOKEN supports AAPL only")
+        params: dict[str, Any] = {}
+        if expiration:
+            params["expiration"] = datetime.fromtimestamp(expiration, UTC).date().isoformat()
+        data = self._chain(symbol, params)
+        contracts = []
+        option_symbols = _array(data, "optionSymbol")
+        underlying_prices = _array(data, "underlyingPrice")
+        quote_price = _first_float(underlying_prices)
+        if quote_price is None:
+            raise MarketDataError(f"No MarketData.app underlying price returned for {symbol}")
+        expirations = _array(data, "expiration")
+        sides = _array(data, "side")
+        strikes = _array(data, "strike")
+        bids = _array(data, "bid")
+        asks = _array(data, "ask")
+        lasts = _array(data, "last")
+        ivs = _array(data, "iv")
+        volumes = _array(data, "volume")
+        open_interests = _array(data, "openInterest")
+        in_money = _array(data, "inTheMoney")
+        for index, option_symbol in enumerate(option_symbols):
+            try:
+                iv = float(_at(ivs, index, 0) or 0)
+                if iv > 3:
+                    iv = iv / 100.0
+                contracts.append(
+                    OptionContract(
+                        symbol=symbol.upper(),
+                        option_type=str(_at(sides, index, "")).lower(),
+                        contract_symbol=str(option_symbol),
+                        expiration=int(_at(expirations, index, expiration or 0)),
+                        strike=float(_at(strikes, index, 0)),
+                        bid=float(_at(bids, index, 0) or 0),
+                        ask=float(_at(asks, index, 0) or 0),
+                        last_price=float(_at(lasts, index, 0) or 0),
+                        implied_volatility=iv,
+                        volume=int(_at(volumes, index, 0) or 0),
+                        open_interest=int(_at(open_interests, index, 0) or 0),
+                        in_the_money=bool(_at(in_money, index, False)),
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+        quote = QuoteSnapshot(
+            symbol=symbol.upper(),
+            price=quote_price,
+            previous_close=None,
+            regular_market_time=None,
+            currency="USD",
+        )
+        return quote, contracts
+
+    def quote(self, symbol: str) -> QuoteSnapshot:
+        quote, _ = self.option_chain(symbol)
+        return quote
+
+    def recent_closes(self, symbol: str, range_: str = "6mo") -> list[float]:
+        raise MarketDataError("MarketData.app fallback does not provide historical closes in this app")
+
+    def _chain(self, symbol: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        query = f"?{urllib.parse.urlencode(params or {})}" if params else ""
+        headers = {"Accept": "application/json", "User-Agent": "option-ai-tool/0.1 real-data scanner"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urllib.request.Request(
+            f"{self.base_url}/options/chain/{urllib.parse.quote(symbol.upper())}/{query}",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:  # pragma: no cover - network failure details vary
+            raise MarketDataError(f"MarketData.app request failed for {symbol}: {exc}") from exc
+        if data.get("s") != "ok":
+            raise MarketDataError(f"MarketData.app error for {symbol}: {data.get('errmsg') or data.get('s')}")
+        return data
+
+
+class ResilientMarketDataClient:
+    def __init__(self, primary: Any, fallback: MarketDataAppClient) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    def option_expirations(self, symbol: str) -> list[int]:
+        if self.fallback.supports_symbol(symbol):
+            try:
+                return self.fallback.option_expirations(symbol)
+            except MarketDataError:
+                pass
+        return self.primary.option_expirations(symbol)
+
+    def option_chain(self, symbol: str, expiration: int | None = None) -> tuple[QuoteSnapshot, list[OptionContract]]:
+        if self.fallback.supports_symbol(symbol):
+            try:
+                return self.fallback.option_chain(symbol, expiration)
+            except MarketDataError:
+                pass
+        return self.primary.option_chain(symbol, expiration)
+
+    def quote(self, symbol: str) -> QuoteSnapshot:
+        return self.primary.quote(symbol)
+
+    def recent_closes(self, symbol: str, range_: str = "6mo") -> list[float]:
+        return self.primary.recent_closes(symbol, range_)
+
+
+def _array(data: dict[str, Any], key: str) -> list[Any]:
+    value = data.get(key) or []
+    return value if isinstance(value, list) else [value]
+
+
+def _at(values: list[Any], index: int, default: Any) -> Any:
+    return values[index] if index < len(values) else default
+
+
+def _first_float(values: list[Any]) -> float | None:
+    for value in values:
+        if value is not None:
+            return float(value)
+    return None
 
 
 _USER_AGENT = (
